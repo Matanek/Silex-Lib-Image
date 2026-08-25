@@ -1,7 +1,9 @@
 use Image
+use Image.JPEG
 use Image.PNG
+use Image.WebP
 
-test "consume image editing and PNG across the public package boundary" {
+test "consume image editing and the principal codecs across the public package boundary" {
     var original = Image.canvas(6, 4, Image.Color(220, 80, 40))
     var thumbnail = copy original
         ..crop(4, 4)
@@ -14,4 +16,10 @@ test "consume image editing and PNG across the public package boundary" {
     assert(decoded.width() == 2 && decoded.height() == 2)
     assert(decoded.pixel(0, 0).r == decoded.pixel(0, 0).g)
     assert(original.width() == 6 && original.height() == 4)
+
+    let jpeg = Image.encode(thumbnail, JPEG.Options(quality:90))
+    let webp = Image.encode(thumbnail, WebP.Options(lossless:true))
+    assert(Image.decode(jpeg).width() == 2)
+    var decoded_webp = Image.decode(webp)
+    assert(decoded_webp.pixel(0, 0).r == thumbnail.pixel(0, 0).r)
 }

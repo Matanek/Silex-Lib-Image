@@ -1,5 +1,7 @@
 use Image
+use Image.JPEG
 use Image.PNG
+use Image.WebP
 
 func sample_image() Image {
     return Image.rgba8(2, 2, [
@@ -113,4 +115,89 @@ test "encode save load and decode PNG through the Image API" {
     var loaded = Image.load(path)
     assert(loaded.width() == 5 && loaded.height() == 3)
     assert(loaded.pixel(0, 0).a == 255 as uint8)
+}
+
+test "encode save load and decode JPEG with explicit lossy options" {
+    let path = "/private/tmp/silex-image-roundtrip.jpg"
+    var original = Image.canvas(12, 8, Image.Color(220, 80, 40))
+    let bytes = Image.encode(original, JPEG.Options(
+        quality:95,
+        progressive:true,
+        subsampling:JPEG.Subsampling.yuv444
+    ))
+    assert(bytes.count() > 3)
+    assert(bytes[0] == 255 as uint8 && bytes[1] == 216 as uint8)
+
+    var decoded = Image.decode(bytes)
+    assert(decoded.width() == 12 && decoded.height() == 8)
+    let pixel = decoded.pixel(0, 0)
+    assert(pixel.r >= 215 as uint8 && pixel.r <= 225 as uint8)
+    assert(pixel.g >= 75 as uint8 && pixel.g <= 85 as uint8)
+    assert(pixel.b >= 35 as uint8 && pixel.b <= 45 as uint8)
+    assert(pixel.a == 255 as uint8)
+
+    Image.save(original, path, JPEG.Options(quality:90))
+    var loaded = Image.load(path)
+    assert(loaded.width() == 12 && loaded.height() == 8)
+}
+
+test "composite transparent pixels on the selected JPEG background" {
+    var transparent = Image.canvas(8, 8, Image.Color(255, 0, 0, 0))
+    let bytes = Image.encode(transparent, JPEG.Options(
+        quality:100,
+        subsampling:JPEG.Subsampling.yuv444,
+        background:Image.Color(10, 180, 30)
+    ))
+    var decoded = Image.decode(bytes)
+    let pixel = decoded.pixel(4, 4)
+    assert(pixel.r >= 7 as uint8 && pixel.r <= 13 as uint8)
+    assert(pixel.g >= 177 as uint8 && pixel.g <= 183 as uint8)
+    assert(pixel.b >= 27 as uint8 && pixel.b <= 33 as uint8)
+    assert(pixel.a == 255 as uint8)
+}
+
+test "round trip WebP in lossless and lossy modes" {
+    let path = "/private/tmp/silex-image-roundtrip.webp"
+    var original = sample_image()
+    let lossless = Image.encode(original, WebP.Options(lossless:true))
+    assert(lossless.count() > 12)
+    assert(lossless[0] == 82 as uint8 && lossless[8] == 87 as uint8)
+
+    var exact = Image.decode(lossless)
+    assert(exact.width() == 2 && exact.height() == 2)
+    let exact_pixels = exact.pixels()
+    let original_pixels = original.pixels()
+    for index in 0...original_pixels.count() {
+        assert(exact_pixels[index] == original_pixels[index])
+    }
+
+    let lossy = Image.encode(original, WebP.Options(quality:75))
+    var compressed = Image.decode(lossy)
+    assert(compressed.width() == 2 && compressed.height() == 2)
+
+    Image.save(original, path, WebP.Options(lossless:true))
+    var loaded = Image.load(path)
+    let loaded_pixels = loaded.pixels()
+    for index in 0...original_pixels.count() {
+        assert(loaded_pixels[index] == original_pixels[index])
+    }
+}
+
+test "preserve hidden RGB channels in lossless WebP" {
+    var original = Image.rgba8(1, 1, [241, 37, 119, 0])
+    let encoded = Image.encode(original, WebP.Options(lossless:true))
+    var decoded = Image.decode(encoded)
+    let pixels = decoded.pixels()
+    assert(pixels[0] == 241 as uint8)
+    assert(pixels[1] == 37 as uint8)
+    assert(pixels[2] == 119 as uint8)
+    assert(pixels[3] == 0 as uint8)
+}
+
+test "reject encoded bytes above the configured read limit" {
+    let bytes = Image.encode(sample_image(), PNG.Options())
+    match Image.try_decode(bytes, Image.ReadOptions(maximum_bytes:8)) {
+        failure(error) => { assert(error.kind == Image.ErrorKind.invalid_input) }
+        success(image) => { assert(false) }
+    }
 }

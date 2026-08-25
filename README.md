@@ -1,9 +1,9 @@
 # Image
 
 Image loads, saves, and edits raster images through one intention-oriented
-Silex API. The first release provides RGBA8 images, PNG input and output,
-cropping, resizing, rotation, mirroring, grayscale conversion, brightness,
-contrast, blur, and sharpening.
+Silex API. The first release provides RGBA8 images with PNG, JPEG, and WebP
+input and output, plus cropping, resizing, rotation, mirroring, grayscale
+conversion, brightness, contrast, blur, and sharpening.
 
 ```text
 silex install Image
@@ -17,7 +17,9 @@ every step:
 
 ```sx
 use Image
+use Image.JPEG
 use Image.PNG
+use Image.WebP
 
 var source = Image.load("portrait.png")
 var thumbnail = copy source
@@ -28,6 +30,8 @@ var thumbnail = copy source
     ..sharpen(0.4)
 
 Image.save(thumbnail, "avatar.png", PNG.Options())
+Image.save(thumbnail, "avatar.jpg", JPEG.Options(quality:90))
+Image.save(thumbnail, "avatar.webp", WebP.Options(lossless:true))
 ```
 
 `copy source` is the explicit Silex spelling when the original must remain

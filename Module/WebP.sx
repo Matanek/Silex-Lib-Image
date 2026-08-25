@@ -1,0 +1,122 @@
+use Interop.Boundary
+use Interop.C
+
+public struct Options {
+    let quality:int
+    let lossless:bool
+
+    init(quality:int = 80, lossless:bool = false) {
+        if quality < 0 || quality > 100 {
+            panic("WebP quality must be between 0 and 100")
+        }
+        self.quality = quality
+        self.lossless = lossless
+    }
+}
+
+package struct Decoded {
+    let width:int
+    let height:int
+    let pixels:uint8[]
+}
+
+package func decode(bytes:uint8[], maximum_pixels:int) Result<Decoded, str> {
+    let packed = C.string(@bytes[0:bytes.count()])
+    let result = C.address_bits(webp_decode(
+        C.pointer(packed),
+        C.byte_count(packed),
+        maximum_pixels as C.Size
+    ))
+    let status = codec_result_status(C.pointer_bits(result))
+    if status != 0 {
+        codec_result_destroy(C.pointer_bits(result))
+        return Result<Decoded, str>.failure(codec_error(status))
+    }
+    let width = codec_result_width(C.pointer_bits(result)) as int
+    let height = codec_result_height(C.pointer_bits(result)) as int
+    let size = codec_result_size(C.pointer_bits(result)) as int
+    let source = C.address_bits(codec_result_bytes(C.pointer_bits(result)))
+    var pixels:uint8[] = []
+    var index = 0
+    while index < size {
+        pixels.append(C.load<uint8>(source, index as uint))
+        index++
+    }
+    codec_result_destroy(C.pointer_bits(result))
+    return Result<Decoded, str>.success(Decoded(
+        width:width,
+        height:height,
+        pixels:pixels
+    ))
+}
+
+package func encode(
+    width:int,
+    height:int,
+    pixels:uint8[],
+    options:Options
+) Result<uint8[], str> {
+    let packed = C.string(@pixels[0:pixels.count()])
+    var lossless:int32 = 0
+    if options.lossless { lossless = 1 }
+    let result = C.address_bits(webp_encode(
+        C.pointer(packed),
+        width as int32,
+        height as int32,
+        options.quality as float32,
+        lossless
+    ))
+    let status = codec_result_status(C.pointer_bits(result))
+    if status != 0 {
+        codec_result_destroy(C.pointer_bits(result))
+        return Result<uint8[], str>.failure(codec_error(status))
+    }
+    let size = codec_result_size(C.pointer_bits(result)) as int
+    let source = C.address_bits(codec_result_bytes(C.pointer_bits(result)))
+    var bytes:uint8[] = []
+    var index = 0
+    while index < size {
+        bytes.append(C.load<uint8>(source, index as uint))
+        index++
+    }
+    codec_result_destroy(C.pointer_bits(result))
+    return Result<uint8[], str>.success(bytes)
+}
+
+func codec_error(status:int32) str {
+    if status == 1 { return "WebP input or options are invalid" }
+    if status == 2 { return "WebP dimensions or output exceed the configured limit" }
+    if status == 4 { return "WebP codec could not allocate memory" }
+    return "WebP codec could not process the image"
+}
+
+let webp_decode = C.function<
+    func(C.Pointer<uint8>, C.Size, C.Size) C.Pointer<uint8>
+>(library:Boundary.ImageCodecs, name:"silex_image_webp_decode")
+let webp_encode = C.function<
+    func(C.Pointer<uint8>, int32, int32, float32, int32) C.Pointer<uint8>
+>(library:Boundary.ImageCodecs, name:"silex_image_webp_encode")
+let codec_result_status = C.function<func(C.Pointer<uint8>) int32>(
+    library:Boundary.ImageCodecs,
+    name:"silex_image_codec_result_status"
+)
+let codec_result_width = C.function<func(C.Pointer<uint8>) int32>(
+    library:Boundary.ImageCodecs,
+    name:"silex_image_codec_result_width"
+)
+let codec_result_height = C.function<func(C.Pointer<uint8>) int32>(
+    library:Boundary.ImageCodecs,
+    name:"silex_image_codec_result_height"
+)
+let codec_result_size = C.function<func(C.Pointer<uint8>) C.Size>(
+    library:Boundary.ImageCodecs,
+    name:"silex_image_codec_result_size"
+)
+let codec_result_bytes = C.function<func(C.Pointer<uint8>) C.Pointer<uint8> >(
+    library:Boundary.ImageCodecs,
+    name:"silex_image_codec_result_bytes"
+)
+let codec_result_destroy = C.function<func(C.Pointer<uint8>) void>(
+    library:Boundary.ImageCodecs,
+    name:"silex_image_codec_result_destroy"
+)

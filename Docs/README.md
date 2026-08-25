@@ -9,10 +9,14 @@ explicit:
 
 ```sx
 use Image
+use Image.JPEG
 use Image.PNG
+use Image.WebP
 
 var image = Image.load("input.png")
-let bytes = Image.encode(image, PNG.Options())
+let png = Image.encode(image, PNG.Options())
+let jpeg = Image.encode(image, JPEG.Options(quality:90))
+let webp = Image.encode(image, WebP.Options(lossless:true))
 Image.save(image, "output.png")
 ```
 
@@ -21,9 +25,39 @@ operations return structured `Image.Error` values. `Image.ReadOptions` bounds
 encoded bytes and decoded pixels before untrusted input can consume unlimited
 resources.
 
-PNG is the first implemented codec. `Image.JPEG` and `Image.WebP` are planned
-as child modules whose option types will select future `Image.encode` and
-`Image.save` overloads without exposing a codec registry.
+PNG, JPEG, and WebP are built-in child modules. `Image.decode` and `Image.load`
+detect all three from their byte signatures. `Image.save(image, path)` selects
+PNG for `.png`, JPEG for `.jpg` or `.jpeg`, and WebP for `.webp`. Passing
+format options explicitly selects the encoder regardless of the path suffix.
+
+PNG is lossless and preserves RGBA8 pixels. Its initial `PNG.Options` is an
+explicit format token reserved for future compression choices.
+
+JPEG is lossy and cannot represent alpha. `JPEG.Options` exposes quality from
+1 to 100, progressive output, YUV 4:4:4, 4:2:2, or 4:2:0 subsampling, and the
+background color used to composite transparent pixels before encoding:
+
+```sx
+Image.save(image, "photo.jpg", JPEG.Options(
+    quality:92,
+    progressive:true,
+    subsampling:JPEG.Subsampling.yuv420,
+    background:Image.Color.white()
+))
+```
+
+WebP supports lossy output through `quality` from 0 to 100 and exact lossless
+RGBA8 output through `lossless:true`. In lossless mode, `quality` controls the
+compression effort instead of introducing image loss:
+
+```sx
+Image.save(image, "preview.webp", WebP.Options(quality:78))
+Image.save(image, "sprite.webp", WebP.Options(lossless:true))
+```
+
+The first codec set deliberately stays focused on the three common raster
+formats. BMP, TIFF, and layered document formats such as PSD remain future
+extensions rather than partial initial implementations.
 
 ## Edit with cascades
 
@@ -69,5 +103,8 @@ interpolate premultiplied color so translucent edges do not acquire dark halos.
 `set_pixel` provide checked coordinates; `pixels()` exports the RGBA8 bytes.
 All dimensions are positive and bounded to 100 million pixels.
 
-The PNG adapter currently consumes GFX's portable SDL3 provider as private
-infrastructure. SDL names and handles do not cross the public Image API.
+The PNG adapter consumes GFX's portable SDL3 provider. JPEG and WebP use a
+small package-owned native boundary over libjpeg-turbo and libwebp. Native
+names, allocations, and handles remain private and never cross the public
+Image API. Upstream versions, checksums, rebuild instructions, and licenses are
+recorded under `Native/` and `ThirdParty/`.

@@ -1,0 +1,161 @@
+use Image.Types
+use Interop.Boundary
+use Interop.C
+
+public enum Subsampling {
+    yuv444
+    yuv422
+    yuv420
+}
+
+public struct Options {
+    let quality:int
+    let progressive:bool
+    let subsampling:Subsampling
+    let background:Types.Color
+
+    init(
+        quality:int = 85,
+        progressive:bool = false,
+        subsampling:Subsampling = Subsampling.yuv420,
+        background:Types.Color = Types.Color.white()
+    ) {
+        if quality < 1 || quality > 100 {
+            panic("JPEG quality must be between 1 and 100")
+        }
+        self.quality = quality
+        self.progressive = progressive
+        self.subsampling = subsampling
+        self.background = background
+    }
+}
+
+package struct Decoded {
+    let width:int
+    let height:int
+    let pixels:uint8[]
+}
+
+package func decode(bytes:uint8[], maximum_pixels:int) Result<Decoded, str> {
+    let packed = C.string(@bytes[0:bytes.count()])
+    let result = C.address_bits(jpeg_decode(
+        C.pointer(packed),
+        C.byte_count(packed),
+        maximum_pixels as C.Size
+    ))
+    return decoded_result(result, "JPEG")
+}
+
+package func encode(
+    width:int,
+    height:int,
+    pixels:uint8[],
+    options:Options
+) Result<uint8[], str> {
+    let packed = C.string(@pixels[0:pixels.count()])
+    var progressive:int32 = 0
+    if options.progressive { progressive = 1 }
+    let result = C.address_bits(jpeg_encode(
+        C.pointer(packed),
+        width as int32,
+        height as int32,
+        options.quality as int32,
+        progressive,
+        subsampling_value(options.subsampling),
+        options.background.r as int32,
+        options.background.g as int32,
+        options.background.b as int32
+    ))
+    return encoded_result(result, "JPEG")
+}
+
+func subsampling_value(subsampling:Subsampling) int32 {
+    match subsampling {
+        yuv444 => { return 0 }
+        yuv422 => { return 1 }
+        yuv420 => { return 2 }
+    }
+}
+
+func decoded_result(result:uint, format:str) Result<Decoded, str> {
+    let status = codec_result_status(C.pointer_bits(result))
+    if status != 0 {
+        codec_result_destroy(C.pointer_bits(result))
+        return Result<Decoded, str>.failure(codec_error(format, status))
+    }
+    let width = codec_result_width(C.pointer_bits(result)) as int
+    let height = codec_result_height(C.pointer_bits(result)) as int
+    let size = codec_result_size(C.pointer_bits(result)) as int
+    let source = C.address_bits(codec_result_bytes(C.pointer_bits(result)))
+    var pixels:uint8[] = []
+    var index = 0
+    while index < size {
+        pixels.append(C.load<uint8>(source, index as uint))
+        index++
+    }
+    codec_result_destroy(C.pointer_bits(result))
+    return Result<Decoded, str>.success(Decoded(
+        width:width,
+        height:height,
+        pixels:pixels
+    ))
+}
+
+func encoded_result(result:uint, format:str) Result<uint8[], str> {
+    let status = codec_result_status(C.pointer_bits(result))
+    if status != 0 {
+        codec_result_destroy(C.pointer_bits(result))
+        return Result<uint8[], str>.failure(codec_error(format, status))
+    }
+    let size = codec_result_size(C.pointer_bits(result)) as int
+    let source = C.address_bits(codec_result_bytes(C.pointer_bits(result)))
+    var bytes:uint8[] = []
+    var index = 0
+    while index < size {
+        bytes.append(C.load<uint8>(source, index as uint))
+        index++
+    }
+    codec_result_destroy(C.pointer_bits(result))
+    return Result<uint8[], str>.success(bytes)
+}
+
+func codec_error(format:str, status:int32) str {
+    if status == 1 { return format + " input or options are invalid" }
+    if status == 2 { return format + " dimensions or output exceed the configured limit" }
+    if status == 4 { return format + " codec could not allocate memory" }
+    return format + " codec could not process the image"
+}
+
+let jpeg_decode = C.function<
+    func(C.Pointer<uint8>, C.Size, C.Size) C.Pointer<uint8>
+>(library:Boundary.ImageCodecs, name:"silex_image_jpeg_decode")
+let jpeg_encode = C.function<
+    func(
+        C.Pointer<uint8>, int32, int32, int32, int32, int32,
+        int32, int32, int32
+    ) C.Pointer<uint8>
+>(library:Boundary.ImageCodecs, name:"silex_image_jpeg_encode")
+let codec_result_status = C.function<func(C.Pointer<uint8>) int32>(
+    library:Boundary.ImageCodecs,
+    name:"silex_image_codec_result_status"
+)
+let codec_result_width = C.function<func(C.Pointer<uint8>) int32>(
+    library:Boundary.ImageCodecs,
+    name:"silex_image_codec_result_width"
+)
+let codec_result_height = C.function<func(C.Pointer<uint8>) int32>(
+    library:Boundary.ImageCodecs,
+    name:"silex_image_codec_result_height"
+)
+let codec_result_size = C.function<func(C.Pointer<uint8>) C.Size>(
+    library:Boundary.ImageCodecs,
+    name:"silex_image_codec_result_size"
+)
+let codec_result_bytes = C.function<func(C.Pointer<uint8>) C.Pointer<uint8> >(
+    library:Boundary.ImageCodecs,
+    name:"silex_image_codec_result_bytes"
+)
+let codec_result_destroy = C.function<func(C.Pointer<uint8>) void>(
+    library:Boundary.ImageCodecs,
+    name:"silex_image_codec_result_destroy"
+)

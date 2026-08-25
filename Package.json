@@ -13,22 +13,79 @@
   "boundary": {
     "macos-arm64": {
       "providers": {
-        "SDL3": { "requires": ["GFX.SDL3"] }
+        "SDL3": { "requires": ["GFX.SDL3"] },
+        "ImageCodecs": {
+          "archive": "Boundary/macos-arm64/libImageCodecs.a",
+          "requires": ["Image.TurboJPEG", "Image.NativeWebP"]
+        },
+        "TurboJPEG": {
+          "archive": "Boundary/macos-arm64/libturbojpeg.a"
+        },
+        "NativeWebP": {
+          "archive": "Boundary/macos-arm64/libwebp.a",
+          "requires": ["Image.SharpYUV"]
+        },
+        "SharpYUV": {
+          "archive": "Boundary/macos-arm64/libsharpyuv.a"
+        }
       }
     },
     "linux-x64": {
       "providers": {
-        "SDL3": { "requires": ["GFX.SDL3"] }
+        "SDL3": { "requires": ["GFX.SDL3"] },
+        "ImageCodecs": {
+          "archive": "Boundary/linux-x64/libImageCodecs.a",
+          "requires": ["Image.TurboJPEG", "Image.NativeWebP"],
+          "libraries": ["m"]
+        },
+        "TurboJPEG": {
+          "archive": "Boundary/linux-x64/libturbojpeg.a"
+        },
+        "NativeWebP": {
+          "archive": "Boundary/linux-x64/libwebp.a",
+          "requires": ["Image.SharpYUV"]
+        },
+        "SharpYUV": {
+          "archive": "Boundary/linux-x64/libsharpyuv.a"
+        }
       }
     },
     "windows-x64": {
       "providers": {
-        "SDL3": { "requires": ["GFX.SDL3"] }
+        "SDL3": { "requires": ["GFX.SDL3"] },
+        "ImageCodecs": {
+          "archive": "Boundary/windows-x64/ImageCodecs.lib",
+          "requires": ["Image.TurboJPEG", "Image.NativeWebP"]
+        },
+        "TurboJPEG": {
+          "archive": "Boundary/windows-x64/turbojpeg.lib"
+        },
+        "NativeWebP": {
+          "archive": "Boundary/windows-x64/webp.lib",
+          "requires": ["Image.SharpYUV"]
+        },
+        "SharpYUV": {
+          "archive": "Boundary/windows-x64/sharpyuv.lib"
+        }
       }
     },
     "windows-arm64": {
       "providers": {
-        "SDL3": { "requires": ["GFX.SDL3"] }
+        "SDL3": { "requires": ["GFX.SDL3"] },
+        "ImageCodecs": {
+          "archive": "Boundary/windows-arm64/ImageCodecs.lib",
+          "requires": ["Image.TurboJPEG", "Image.NativeWebP"]
+        },
+        "TurboJPEG": {
+          "archive": "Boundary/windows-arm64/turbojpeg.lib"
+        },
+        "NativeWebP": {
+          "archive": "Boundary/windows-arm64/webp.lib",
+          "requires": ["Image.SharpYUV"]
+        },
+        "SharpYUV": {
+          "archive": "Boundary/windows-arm64/sharpyuv.lib"
+        }
       }
     }
   }

@@ -1,0 +1,22 @@
+public struct Color {
+    let r:uint8
+    let g:uint8
+    let b:uint8
+    let a:uint8
+
+    init(
+        r:uint8 = 0,
+        g:uint8 = 0,
+        b:uint8 = 0,
+        a:uint8 = 255
+    ) {
+        self.r = r
+        self.g = g
+        self.b = b
+        self.a = a
+    }
+
+    static func transparent() Color { return Color(0, 0, 0, 0) }
+    static func black() Color { return Color(0, 0, 0) }
+    static func white() Color { return Color(255, 255, 255) }
+}

@@ -1,4 +1,8 @@
+public use Image.Types.Color
+
 use Image.PNG
+use Image.JPEG
+use Image.WebP
 use STD.File
 use STD.Math
 use STD.Path
@@ -48,29 +52,6 @@ public struct Error {
     let operation:str
     let subject:str?
     let detail:str
-}
-
-public struct Color {
-    let r:uint8
-    let g:uint8
-    let b:uint8
-    let a:uint8
-
-    init(
-        r:uint8 = 0,
-        g:uint8 = 0,
-        b:uint8 = 0,
-        a:uint8 = 255
-    ) {
-        self.r = r
-        self.g = g
-        self.b = b
-        self.a = a
-    }
-
-    static func transparent() Color { return Color(0, 0, 0, 0) }
-    static func black() Color { return Color(0, 0, 0) }
-    static func white() Color { return Color(255, 255, 255) }
 }
 
 public struct Region {
@@ -565,31 +546,85 @@ public func load(path:str, options:ReadOptions = ReadOptions()) Image {
 }
 
 public func try_decode(bytes:uint8[], options:ReadOptions = ReadOptions()) Result<Image, Error> {
-    if !is_png(bytes) {
+    if bytes.count() == 0 {
         return Result<Image, Error>.failure(image_error(
-            ErrorKind.unsupported_format,
+            ErrorKind.invalid_input,
             "image.decode",
             null,
-            "encoded bytes are not a supported image format"
+            "encoded image cannot be empty"
         ))
     }
-    match PNG.decode(bytes, options.maximum_pixels) {
-        failure(detail) => {
-            return Result<Image, Error>.failure(image_error(
-                ErrorKind.codec,
-                "image.decode",
-                null,
-                detail
-            ))
-        }
-        success(decoded) => {
-            return Result<Image, Error>.success(Image.rgba8(
-                decoded.width,
-                decoded.height,
-                decoded.pixels
-            ))
+    if bytes.count() > options.maximum_bytes {
+        return Result<Image, Error>.failure(image_error(
+            ErrorKind.invalid_input,
+            "image.decode",
+            null,
+            "encoded image exceeds the configured byte limit"
+        ))
+    }
+    if is_png(bytes) {
+        match PNG.decode(bytes, options.maximum_pixels) {
+            failure(detail) => {
+                return Result<Image, Error>.failure(image_error(
+                    ErrorKind.codec,
+                    "image.decode",
+                    null,
+                    detail
+                ))
+            }
+            success(decoded) => {
+                return Result<Image, Error>.success(Image.rgba8(
+                    decoded.width,
+                    decoded.height,
+                    decoded.pixels
+                ))
+            }
         }
     }
+    if is_jpeg(bytes) {
+        match JPEG.decode(bytes, options.maximum_pixels) {
+            failure(detail) => {
+                return Result<Image, Error>.failure(image_error(
+                    ErrorKind.codec,
+                    "image.decode",
+                    null,
+                    detail
+                ))
+            }
+            success(decoded) => {
+                return Result<Image, Error>.success(Image.rgba8(
+                    decoded.width,
+                    decoded.height,
+                    decoded.pixels
+                ))
+            }
+        }
+    }
+    if is_webp(bytes) {
+        match WebP.decode(bytes, options.maximum_pixels) {
+            failure(detail) => {
+                return Result<Image, Error>.failure(image_error(
+                    ErrorKind.codec,
+                    "image.decode",
+                    null,
+                    detail
+                ))
+            }
+            success(decoded) => {
+                return Result<Image, Error>.success(Image.rgba8(
+                    decoded.width,
+                    decoded.height,
+                    decoded.pixels
+                ))
+            }
+        }
+    }
+    return Result<Image, Error>.failure(image_error(
+        ErrorKind.unsupported_format,
+        "image.decode",
+        null,
+        "encoded bytes are not PNG, JPEG, or WebP"
+    ))
 }
 
 public func decode(bytes:uint8[], options:ReadOptions = ReadOptions()) Image {
@@ -620,6 +655,48 @@ public func encode(image:Image, options:PNG.Options) uint8[] {
     }
 }
 
+public func try_encode(image:Image, options:JPEG.Options) Result<uint8[], Error> {
+    match JPEG.encode(image.width(), image.height(), image.pixels(), options) {
+        failure(detail) => {
+            return Result<uint8[], Error>.failure(image_error(
+                ErrorKind.codec,
+                "image.encode",
+                null,
+                detail
+            ))
+        }
+        success(bytes) => { return Result<uint8[], Error>.success(bytes) }
+    }
+}
+
+public func encode(image:Image, options:JPEG.Options) uint8[] {
+    match try_encode(image, options) {
+        failure(error) => { panic(error.operation + ": " + error.detail) }
+        success(bytes) => { return bytes }
+    }
+}
+
+public func try_encode(image:Image, options:WebP.Options) Result<uint8[], Error> {
+    match WebP.encode(image.width(), image.height(), image.pixels(), options) {
+        failure(detail) => {
+            return Result<uint8[], Error>.failure(image_error(
+                ErrorKind.codec,
+                "image.encode",
+                null,
+                detail
+            ))
+        }
+        success(bytes) => { return Result<uint8[], Error>.success(bytes) }
+    }
+}
+
+public func encode(image:Image, options:WebP.Options) uint8[] {
+    match try_encode(image, options) {
+        failure(error) => { panic(error.operation + ": " + error.detail) }
+        success(bytes) => { return bytes }
+    }
+}
+
 public func try_save(image:Image, path:str) Result<void, Error> {
     match Path.extension(path) {
         failure(error) => {
@@ -634,6 +711,12 @@ public func try_save(image:Image, path:str) Result<void, Error> {
             if let value = extension {
                 if value == "png" || value == "PNG" {
                     return try_save(image, path, PNG.Options())
+                }
+                if value == "jpg" || value == "JPG" || value == "jpeg" || value == "JPEG" {
+                    return try_save(image, path, JPEG.Options())
+                }
+                if value == "webp" || value == "WEBP" {
+                    return try_save(image, path, WebP.Options())
                 }
             }
         }
@@ -661,6 +744,36 @@ public func try_save(image:Image, path:str, options:PNG.Options) Result<void, Er
     }
 }
 
+public func try_save(image:Image, path:str, options:JPEG.Options) Result<void, Error> {
+    let bytes = try try_encode(image, options)
+    match File.write_all(path, @bytes[0:bytes.count()]) {
+        failure(error) => {
+            return Result<void, Error>.failure(image_error(
+                ErrorKind.io,
+                "image.save",
+                path,
+                error.detail
+            ))
+        }
+        success => { return Result<void, Error>.success() }
+    }
+}
+
+public func try_save(image:Image, path:str, options:WebP.Options) Result<void, Error> {
+    let bytes = try try_encode(image, options)
+    match File.write_all(path, @bytes[0:bytes.count()]) {
+        failure(error) => {
+            return Result<void, Error>.failure(image_error(
+                ErrorKind.io,
+                "image.save",
+                path,
+                error.detail
+            ))
+        }
+        success => { return Result<void, Error>.success() }
+    }
+}
+
 public func save(image:Image, path:str) {
     match try_save(image, path) {
         failure(error) => { panic(error.operation + ": " + error.detail) }
@@ -669,6 +782,20 @@ public func save(image:Image, path:str) {
 }
 
 public func save(image:Image, path:str, options:PNG.Options) {
+    match try_save(image, path, options) {
+        failure(error) => { panic(error.operation + ": " + error.detail) }
+        success => {}
+    }
+}
+
+public func save(image:Image, path:str, options:JPEG.Options) {
+    match try_save(image, path, options) {
+        failure(error) => { panic(error.operation + ": " + error.detail) }
+        success => {}
+    }
+}
+
+public func save(image:Image, path:str, options:WebP.Options) {
     match try_save(image, path, options) {
         failure(error) => { panic(error.operation + ": " + error.detail) }
         success => {}
@@ -902,6 +1029,25 @@ func is_png(bytes:uint8[]) bool {
         bytes[5] == 10 as uint8 &&
         bytes[6] == 26 as uint8 &&
         bytes[7] == 10 as uint8
+}
+
+func is_jpeg(bytes:uint8[]) bool {
+    return bytes.count() >= 3 &&
+        bytes[0] == 255 as uint8 &&
+        bytes[1] == 216 as uint8 &&
+        bytes[2] == 255 as uint8
+}
+
+func is_webp(bytes:uint8[]) bool {
+    return bytes.count() >= 12 &&
+        bytes[0] == 82 as uint8 &&
+        bytes[1] == 73 as uint8 &&
+        bytes[2] == 70 as uint8 &&
+        bytes[3] == 70 as uint8 &&
+        bytes[8] == 87 as uint8 &&
+        bytes[9] == 69 as uint8 &&
+        bytes[10] == 66 as uint8 &&
+        bytes[11] == 80 as uint8
 }
 
 func image_error(kind:ErrorKind, operation:str, subject:str?, detail:str) Error {
