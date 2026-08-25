@@ -107,4 +107,4 @@ The PNG adapter consumes GFX's portable SDL3 provider. JPEG and WebP use a
 small package-owned native boundary over libjpeg-turbo and libwebp. Native
 names, allocations, and handles remain private and never cross the public
 Image API. Upstream versions, checksums, rebuild instructions, and licenses are
-recorded under `Native/` and `ThirdParty/`.
+recorded under `Native/` and `Licenses/`.

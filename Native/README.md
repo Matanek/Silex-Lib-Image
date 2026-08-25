@@ -22,4 +22,4 @@ enabled on x64 and Windows ARM64, while the macOS ARM64 build uses the portable
 path. The Silex boundary exposes only Image-owned result handles and never
 publishes either upstream C API.
 
-Licenses and required notices are preserved under `ThirdParty/`.
+Licenses and required notices are preserved under `Licenses/`.
