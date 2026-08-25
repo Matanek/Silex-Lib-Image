@@ -1,0 +1,909 @@
+use Image.PNG
+use STD.File
+use STD.Math
+use STD.Path
+
+public enum Anchor {
+    top_left
+    top
+    top_right
+    left
+    center
+    right
+    bottom_left
+    bottom
+    bottom_right
+}
+
+public enum CropOverflow {
+    reject
+    pad
+}
+
+public enum ResizeMode {
+    stretch
+    contain
+    cover
+}
+
+public enum Resampling {
+    nearest
+    bilinear
+}
+
+public enum Axis {
+    horizontal
+    vertical
+}
+
+public enum ErrorKind {
+    invalid_input
+    unsupported_format
+    io
+    codec
+}
+
+public struct Error {
+    let kind:ErrorKind
+    let operation:str
+    let subject:str?
+    let detail:str
+}
+
+public struct Color {
+    let r:uint8
+    let g:uint8
+    let b:uint8
+    let a:uint8
+
+    init(
+        r:uint8 = 0,
+        g:uint8 = 0,
+        b:uint8 = 0,
+        a:uint8 = 255
+    ) {
+        self.r = r
+        self.g = g
+        self.b = b
+        self.a = a
+    }
+
+    static func transparent() Color { return Color(0, 0, 0, 0) }
+    static func black() Color { return Color(0, 0, 0) }
+    static func white() Color { return Color(255, 255, 255) }
+}
+
+public struct Region {
+    let x:int
+    let y:int
+    let width:int
+    let height:int
+
+    init(x:int, y:int, width:int, height:int) {
+        if x < 0 || y < 0 || width <= 0 || height <= 0 {
+            panic("Image region requires a non-negative origin and positive dimensions")
+        }
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+}
+
+public struct CropOptions {
+    let anchor:Anchor
+    let overflow:CropOverflow
+    let background:Color
+
+    init(
+        anchor:Anchor = Anchor.center,
+        overflow:CropOverflow = CropOverflow.reject,
+        background:Color = Color.transparent()
+    ) {
+        self.anchor = anchor
+        self.overflow = overflow
+        self.background = background
+    }
+}
+
+public struct ResizeOptions {
+    let mode:ResizeMode
+    let filter:Resampling
+    let anchor:Anchor
+
+    init(
+        mode:ResizeMode = ResizeMode.stretch,
+        filter:Resampling = Resampling.bilinear,
+        anchor:Anchor = Anchor.center
+    ) {
+        self.mode = mode
+        self.filter = filter
+        self.anchor = anchor
+    }
+}
+
+public struct RotationOptions {
+    let expand:bool
+    let filter:Resampling
+    let background:Color
+
+    init(
+        expand:bool = true,
+        filter:Resampling = Resampling.bilinear,
+        background:Color = Color.transparent()
+    ) {
+        self.expand = expand
+        self.filter = filter
+        self.background = background
+    }
+}
+
+public struct ReadOptions {
+    let maximum_bytes:int
+    let maximum_pixels:int
+
+    init(
+        maximum_bytes:int = 128 * 1024 * 1024,
+        maximum_pixels:int = 100 * 1024 * 1024
+    ) {
+        if maximum_bytes <= 0 || maximum_pixels <= 0 || maximum_pixels > 100 * 1024 * 1024 {
+            panic("Image read limits must be positive and stay within the global pixel limit")
+        }
+        self.maximum_bytes = maximum_bytes
+        self.maximum_pixels = maximum_pixels
+    }
+}
+
+public class Image {
+    private var image_width:int
+    private var image_height:int
+    private var image_pixels:uint8[]
+
+    init() {
+        self.image_width = 1
+        self.image_height = 1
+        self.image_pixels = [255, 255, 255, 255]
+    }
+
+    private init(width:int, height:int, pixels:uint8[]) {
+        require_dimensions(width, height, pixels.count())
+        self.image_width = width
+        self.image_height = height
+        self.image_pixels = pixels
+    }
+
+    static func rgba8(width:int, height:int, pixels:uint8[]) Image {
+        return Image(width, height, pixels)
+    }
+
+    static func canvas(width:int, height:int, color:Color = Color.transparent()) Image {
+        require_pixel_count(width, height)
+        var pixels:uint8[] = []
+        var index = 0
+        while index < width * height {
+            append_color(pixels, color)
+            index++
+        }
+        return Image(width, height, pixels)
+    }
+
+    static func solid(color:Color = Color.white()) Image {
+        return Image.canvas(1, 1, color)
+    }
+
+    func width() int { return self.image_width }
+    func height() int { return self.image_height }
+    func byte_count() int { return self.image_width * self.image_height * 4 }
+    func pixels() uint8[] { return self.image_pixels }
+
+    func pixel(x:int, y:int) Color {
+        self.require_coordinate(x, y)
+        return color_at(self.image_pixels, self.image_width, x, y)
+    }
+
+    func set_pixel(x:int, y:int, color:Color) {
+        self.require_coordinate(x, y)
+        let index = (y * self.image_width + x) * 4
+        self.image_pixels[index] = color.r
+        self.image_pixels[index + 1] = color.g
+        self.image_pixels[index + 2] = color.b
+        self.image_pixels[index + 3] = color.a
+    }
+
+    func crop(region:Region) {
+        if region.x > self.image_width - region.width || region.y > self.image_height - region.height {
+            panic("Image crop region exceeds the source bounds")
+        }
+        self.crop_at(
+            region.x,
+            region.y,
+            region.width,
+            region.height,
+            CropOverflow.reject,
+            Color.transparent()
+        )
+    }
+
+    func crop(width:int, height:int, options:CropOptions = CropOptions()) {
+        require_pixel_count(width, height)
+        if options.overflow == CropOverflow.reject &&
+            (width > self.image_width || height > self.image_height) {
+            panic("Image crop dimensions exceed the source bounds")
+        }
+        let x = anchored_offset(self.image_width, width, options.anchor, true)
+        let y = anchored_offset(self.image_height, height, options.anchor, false)
+        self.crop_at(x, y, width, height, options.overflow, options.background)
+    }
+
+    func resize(width:int, height:int, options:ResizeOptions = ResizeOptions()) {
+        require_pixel_count(width, height)
+        match options.mode {
+            stretch => { self.resize_exact(width, height, options.filter) }
+            contain => {
+                let dimensions = contained_size(
+                    self.image_width,
+                    self.image_height,
+                    width,
+                    height
+                )
+                self.resize_exact(dimensions.width, dimensions.height, options.filter)
+            }
+            cover => {
+                let dimensions = covered_size(
+                    self.image_width,
+                    self.image_height,
+                    width,
+                    height
+                )
+                self.resize_exact(dimensions.width, dimensions.height, options.filter)
+                self.crop(width, height, CropOptions(anchor:options.anchor))
+            }
+        }
+    }
+
+    func rotate(degrees:float, options:RotationOptions = RotationOptions()) {
+        let radians = degrees * 0.0174532925
+        var cosine = Math.cos(radians)
+        var sine = Math.sin(radians)
+        if Math.abs(cosine) < 0.000001 { cosine = 0.0 }
+        if Math.abs(sine) < 0.000001 { sine = 0.0 }
+        if Math.abs(cosine - 1.0) < 0.000001 { cosine = 1.0 }
+        if Math.abs(cosine + 1.0) < 0.000001 { cosine = -1.0 }
+        if Math.abs(sine - 1.0) < 0.000001 { sine = 1.0 }
+        if Math.abs(sine + 1.0) < 0.000001 { sine = -1.0 }
+        var target_width = self.image_width
+        var target_height = self.image_height
+        if options.expand {
+            target_width = Math.ceil(
+                Math.abs(self.image_width as float * cosine) +
+                Math.abs(self.image_height as float * sine)
+            ) as int
+            target_height = Math.ceil(
+                Math.abs(self.image_width as float * sine) +
+                Math.abs(self.image_height as float * cosine)
+            ) as int
+        }
+        let source_x = (self.image_width - 1) as float * 0.5
+        let source_y = (self.image_height - 1) as float * 0.5
+        let target_x = (target_width - 1) as float * 0.5
+        let target_y = (target_height - 1) as float * 0.5
+        var result:uint8[] = []
+        var y = 0
+        while y < target_height {
+            var x = 0
+            while x < target_width {
+                let dx = x as float - target_x
+                let dy = y as float - target_y
+                let sample_x = cosine * dx + sine * dy + source_x
+                let sample_y = -sine * dx + cosine * dy + source_y
+                append_color(
+                    result,
+                    sample(self.image_pixels, self.image_width, self.image_height,
+                        sample_x, sample_y, options.filter, options.background)
+                )
+                x++
+            }
+            y++
+        }
+        self.replace(target_width, target_height, result)
+    }
+
+    func rotate_left() { self.rotate(-90.0, RotationOptions(filter:Resampling.nearest)) }
+    func rotate_right() { self.rotate(90.0, RotationOptions(filter:Resampling.nearest)) }
+    func rotate_180() { self.rotate(180.0, RotationOptions(filter:Resampling.nearest)) }
+
+    func flip(axis:Axis) {
+        var result:uint8[] = []
+        var y = 0
+        while y < self.image_height {
+            var x = 0
+            while x < self.image_width {
+                var source_x = x
+                var source_y = y
+                if axis == Axis.horizontal { source_x = self.image_width - 1 - x }
+                else { source_y = self.image_height - 1 - y }
+                append_color(result, color_at(self.image_pixels, self.image_width, source_x, source_y))
+                x++
+            }
+            y++
+        }
+        self.image_pixels = result
+    }
+
+    func flip_horizontal() { self.flip(Axis.horizontal) }
+    func flip_vertical() { self.flip(Axis.vertical) }
+
+    func grayscale() {
+        var index = 0
+        while index < self.image_pixels.count() {
+            let gray = (
+                self.image_pixels[index] as int * 54 +
+                self.image_pixels[index + 1] as int * 183 +
+                self.image_pixels[index + 2] as int * 19
+            ) / 256
+            let value = gray as uint8
+            self.image_pixels[index] = value
+            self.image_pixels[index + 1] = value
+            self.image_pixels[index + 2] = value
+            index += 4
+        }
+    }
+
+    func invert() {
+        var index = 0
+        while index < self.image_pixels.count() {
+            self.image_pixels[index] = (255 - self.image_pixels[index] as int) as uint8
+            self.image_pixels[index + 1] = (255 - self.image_pixels[index + 1] as int) as uint8
+            self.image_pixels[index + 2] = (255 - self.image_pixels[index + 2] as int) as uint8
+            index += 4
+        }
+    }
+
+    func brightness(amount:float) {
+        if amount < -1.0 || amount > 1.0 { panic("Image brightness must be between -1 and 1") }
+        let offset = amount * 255.0
+        self.map_rgb(offset, 1.0)
+    }
+
+    func contrast(amount:float) {
+        if amount < 0.0 { panic("Image contrast multiplier cannot be negative") }
+        self.map_rgb(128.0 - 128.0 * amount, amount)
+    }
+
+    func blur(radius:int = 1) {
+        if radius < 1 { panic("Image blur radius must be positive") }
+        var result:uint8[] = []
+        var y = 0
+        while y < self.image_height {
+            var x = 0
+            while x < self.image_width {
+                var red_alpha = 0
+                var green_alpha = 0
+                var blue_alpha = 0
+                var alpha = 0
+                var count = 0
+                var sample_y = y - radius
+                while sample_y <= y + radius {
+                    var sample_x = x - radius
+                    while sample_x <= x + radius {
+                        if sample_x >= 0 && sample_x < self.image_width &&
+                            sample_y >= 0 && sample_y < self.image_height {
+                            let color = color_at(self.image_pixels, self.image_width, sample_x, sample_y)
+                            red_alpha += color.r as int * color.a as int
+                            green_alpha += color.g as int * color.a as int
+                            blue_alpha += color.b as int * color.a as int
+                            alpha += color.a as int
+                            count++
+                        }
+                        sample_x++
+                    }
+                    sample_y++
+                }
+                if alpha == 0 {
+                    append_color(result, Color.transparent())
+                } else {
+                    append_color(result, Color(
+                        clamp_byte(red_alpha as float / alpha as float),
+                        clamp_byte(green_alpha as float / alpha as float),
+                        clamp_byte(blue_alpha as float / alpha as float),
+                        clamp_byte(alpha as float / count as float)
+                    ))
+                }
+                x++
+            }
+            y++
+        }
+        self.image_pixels = result
+    }
+
+    func sharpen(amount:float = 1.0) {
+        if amount < 0.0 { panic("Image sharpen amount cannot be negative") }
+        let source = self.image_pixels
+        var result:uint8[] = []
+        var y = 0
+        while y < self.image_height {
+            var x = 0
+            while x < self.image_width {
+                let center = color_at(source, self.image_width, x, y)
+                let left = color_clamped(source, self.image_width, self.image_height, x - 1, y)
+                let right = color_clamped(source, self.image_width, self.image_height, x + 1, y)
+                let top = color_clamped(source, self.image_width, self.image_height, x, y - 1)
+                let bottom = color_clamped(source, self.image_width, self.image_height, x, y + 1)
+                append_color(result, Color(
+                    sharpen_channel(center.r, left.r, right.r, top.r, bottom.r, amount),
+                    sharpen_channel(center.g, left.g, right.g, top.g, bottom.g, amount),
+                    sharpen_channel(center.b, left.b, right.b, top.b, bottom.b, amount),
+                    center.a
+                ))
+                x++
+            }
+            y++
+        }
+        self.image_pixels = result
+    }
+
+    private func crop_at(
+        x:int,
+        y:int,
+        width:int,
+        height:int,
+        overflow:CropOverflow,
+        background:Color
+    ) {
+        var result:uint8[] = []
+        var target_y = 0
+        while target_y < height {
+            var target_x = 0
+            while target_x < width {
+                let source_x = x + target_x
+                let source_y = y + target_y
+                if source_x >= 0 && source_x < self.image_width &&
+                    source_y >= 0 && source_y < self.image_height {
+                    append_color(result, color_at(
+                        self.image_pixels,
+                        self.image_width,
+                        source_x,
+                        source_y
+                    ))
+                } else {
+                    if overflow == CropOverflow.reject {
+                        panic("Image crop region exceeds the source bounds")
+                    }
+                    append_color(result, background)
+                }
+                target_x++
+            }
+            target_y++
+        }
+        self.replace(width, height, result)
+    }
+
+    private func resize_exact(width:int, height:int, filter:Resampling) {
+        let scale_x = self.image_width as float / width as float
+        let scale_y = self.image_height as float / height as float
+        var result:uint8[] = []
+        var y = 0
+        while y < height {
+            var x = 0
+            while x < width {
+                var source_x = (x as float + 0.5) * scale_x - 0.5
+                var source_y = (y as float + 0.5) * scale_y - 0.5
+                if source_x < 0.0 { source_x = 0.0 }
+                if source_x > (self.image_width - 1) as float {
+                    source_x = (self.image_width - 1) as float
+                }
+                if source_y < 0.0 { source_y = 0.0 }
+                if source_y > (self.image_height - 1) as float {
+                    source_y = (self.image_height - 1) as float
+                }
+                append_color(result, sample(
+                    self.image_pixels,
+                    self.image_width,
+                    self.image_height,
+                    source_x,
+                    source_y,
+                    filter,
+                    Color.transparent()
+                ))
+                x++
+            }
+            y++
+        }
+        self.replace(width, height, result)
+    }
+
+    private func replace(width:int, height:int, pixels:uint8[]) {
+        self.image_width = width
+        self.image_height = height
+        self.image_pixels = pixels
+    }
+
+    private func map_rgb(offset:float, multiplier:float) {
+        var index = 0
+        while index < self.image_pixels.count() {
+            self.image_pixels[index] = clamp_byte(self.image_pixels[index] as float * multiplier + offset)
+            self.image_pixels[index + 1] = clamp_byte(self.image_pixels[index + 1] as float * multiplier + offset)
+            self.image_pixels[index + 2] = clamp_byte(self.image_pixels[index + 2] as float * multiplier + offset)
+            index += 4
+        }
+    }
+
+    private func require_coordinate(x:int, y:int) {
+        if x < 0 || x >= self.image_width || y < 0 || y >= self.image_height {
+            panic("Image pixel coordinate is outside the image")
+        }
+    }
+}
+
+public func try_load(path:str, options:ReadOptions = ReadOptions()) Result<Image, Error> {
+    if path == "" {
+        return Result<Image, Error>.failure(image_error(
+            ErrorKind.invalid_input,
+            "image.load",
+            path,
+            "path cannot be empty"
+        ))
+    }
+    match File.read_all(path, options.maximum_bytes) {
+        failure(error) => {
+            return Result<Image, Error>.failure(image_error(
+                ErrorKind.io,
+                "image.load",
+                path,
+                error.detail
+            ))
+        }
+        success(bytes) => { return try_decode(bytes, options) }
+    }
+}
+
+public func load(path:str, options:ReadOptions = ReadOptions()) Image {
+    match try_load(path, options) {
+        failure(error) => { panic(error.operation + ": " + error.detail) }
+        success(image) => { return image }
+    }
+}
+
+public func try_decode(bytes:uint8[], options:ReadOptions = ReadOptions()) Result<Image, Error> {
+    if !is_png(bytes) {
+        return Result<Image, Error>.failure(image_error(
+            ErrorKind.unsupported_format,
+            "image.decode",
+            null,
+            "encoded bytes are not a supported image format"
+        ))
+    }
+    match PNG.decode(bytes, options.maximum_pixels) {
+        failure(detail) => {
+            return Result<Image, Error>.failure(image_error(
+                ErrorKind.codec,
+                "image.decode",
+                null,
+                detail
+            ))
+        }
+        success(decoded) => {
+            return Result<Image, Error>.success(Image.rgba8(
+                decoded.width,
+                decoded.height,
+                decoded.pixels
+            ))
+        }
+    }
+}
+
+public func decode(bytes:uint8[], options:ReadOptions = ReadOptions()) Image {
+    match try_decode(bytes, options) {
+        failure(error) => { panic(error.operation + ": " + error.detail) }
+        success(image) => { return image }
+    }
+}
+
+public func try_encode(image:Image, options:PNG.Options) Result<uint8[], Error> {
+    match PNG.encode(image.width(), image.height(), image.pixels()) {
+        failure(detail) => {
+            return Result<uint8[], Error>.failure(image_error(
+                ErrorKind.codec,
+                "image.encode",
+                null,
+                detail
+            ))
+        }
+        success(bytes) => { return Result<uint8[], Error>.success(bytes) }
+    }
+}
+
+public func encode(image:Image, options:PNG.Options) uint8[] {
+    match try_encode(image, options) {
+        failure(error) => { panic(error.operation + ": " + error.detail) }
+        success(bytes) => { return bytes }
+    }
+}
+
+public func try_save(image:Image, path:str) Result<void, Error> {
+    match Path.extension(path) {
+        failure(error) => {
+            return Result<void, Error>.failure(image_error(
+                ErrorKind.invalid_input,
+                "image.save",
+                path,
+                error.detail
+            ))
+        }
+        success(extension) => {
+            if let value = extension {
+                if value == "png" || value == "PNG" {
+                    return try_save(image, path, PNG.Options())
+                }
+            }
+        }
+    }
+    return Result<void, Error>.failure(image_error(
+        ErrorKind.unsupported_format,
+        "image.save",
+        path,
+        "file extension does not select a supported image format"
+    ))
+}
+
+public func try_save(image:Image, path:str, options:PNG.Options) Result<void, Error> {
+    let bytes = try try_encode(image, options)
+    match File.write_all(path, @bytes[0:bytes.count()]) {
+        failure(error) => {
+            return Result<void, Error>.failure(image_error(
+                ErrorKind.io,
+                "image.save",
+                path,
+                error.detail
+            ))
+        }
+        success => { return Result<void, Error>.success() }
+    }
+}
+
+public func save(image:Image, path:str) {
+    match try_save(image, path) {
+        failure(error) => { panic(error.operation + ": " + error.detail) }
+        success => {}
+    }
+}
+
+public func save(image:Image, path:str, options:PNG.Options) {
+    match try_save(image, path, options) {
+        failure(error) => { panic(error.operation + ": " + error.detail) }
+        success => {}
+    }
+}
+
+struct Dimensions {
+    let width:int
+    let height:int
+}
+
+func contained_size(source_width:int, source_height:int, width:int, height:int) Dimensions {
+    let horizontal = width as float / source_width as float
+    let vertical = height as float / source_height as float
+    var scale = horizontal
+    if vertical < scale { scale = vertical }
+    return scaled_dimensions(source_width, source_height, scale)
+}
+
+func covered_size(source_width:int, source_height:int, width:int, height:int) Dimensions {
+    let horizontal = width as float / source_width as float
+    let vertical = height as float / source_height as float
+    var scale = horizontal
+    if vertical > scale { scale = vertical }
+    var result_width = Math.ceil(source_width as float * scale) as int
+    var result_height = Math.ceil(source_height as float * scale) as int
+    if result_width < width { result_width = width }
+    if result_height < height { result_height = height }
+    return Dimensions(width:result_width, height:result_height)
+}
+
+func scaled_dimensions(width:int, height:int, scale:float) Dimensions {
+    var result_width = Math.round(width as float * scale) as int
+    var result_height = Math.round(height as float * scale) as int
+    if result_width < 1 { result_width = 1 }
+    if result_height < 1 { result_height = 1 }
+    return Dimensions(width:result_width, height:result_height)
+}
+
+func anchored_offset(source:int, target:int, anchor:Anchor, horizontal:bool) int {
+    if horizontal {
+        match anchor {
+            top_left => { return 0 }
+            left => { return 0 }
+            bottom_left => { return 0 }
+            top_right => { return source - target }
+            right => { return source - target }
+            bottom_right => { return source - target }
+            else => { return (source - target) / 2 }
+        }
+    }
+    match anchor {
+        top_left => { return 0 }
+        top => { return 0 }
+        top_right => { return 0 }
+        bottom_left => { return source - target }
+        bottom => { return source - target }
+        bottom_right => { return source - target }
+        else => { return (source - target) / 2 }
+    }
+}
+
+func sample(
+    pixels:uint8[],
+    width:int,
+    height:int,
+    x:float,
+    y:float,
+    filter:Resampling,
+    background:Color
+) Color {
+    if filter == Resampling.nearest {
+        let nearest_x = Math.round(x) as int
+        let nearest_y = Math.round(y) as int
+        if nearest_x < 0 || nearest_x >= width || nearest_y < 0 || nearest_y >= height {
+            return background
+        }
+        return color_at(pixels, width, nearest_x, nearest_y)
+    }
+    if x < -0.5 || x > width as float - 0.5 || y < -0.5 || y > height as float - 0.5 {
+        return background
+    }
+    let x0 = Math.floor(x) as int
+    let y0 = Math.floor(y) as int
+    let x1 = x0 + 1
+    let y1 = y0 + 1
+    let tx = x - x0 as float
+    let ty = y - y0 as float
+    let top_left = color_or_background(pixels, width, height, x0, y0, background)
+    let top_right = color_or_background(pixels, width, height, x1, y0, background)
+    let bottom_left = color_or_background(pixels, width, height, x0, y1, background)
+    let bottom_right = color_or_background(pixels, width, height, x1, y1, background)
+    return bilinear_color(top_left, top_right, bottom_left, bottom_right, tx, ty)
+}
+
+func bilinear_color(
+    top_left:Color,
+    top_right:Color,
+    bottom_left:Color,
+    bottom_right:Color,
+    x:float,
+    y:float
+) Color {
+    let alpha = bilinear_value(
+        top_left.a as float,
+        top_right.a as float,
+        bottom_left.a as float,
+        bottom_right.a as float,
+        x,
+        y
+    )
+    if alpha <= 0.0 { return Color.transparent() }
+    let red = bilinear_value(
+        top_left.r as float * top_left.a as float / 255.0,
+        top_right.r as float * top_right.a as float / 255.0,
+        bottom_left.r as float * bottom_left.a as float / 255.0,
+        bottom_right.r as float * bottom_right.a as float / 255.0,
+        x,
+        y
+    )
+    let green = bilinear_value(
+        top_left.g as float * top_left.a as float / 255.0,
+        top_right.g as float * top_right.a as float / 255.0,
+        bottom_left.g as float * bottom_left.a as float / 255.0,
+        bottom_right.g as float * bottom_right.a as float / 255.0,
+        x,
+        y
+    )
+    let blue = bilinear_value(
+        top_left.b as float * top_left.a as float / 255.0,
+        top_right.b as float * top_right.a as float / 255.0,
+        bottom_left.b as float * bottom_left.a as float / 255.0,
+        bottom_right.b as float * bottom_right.a as float / 255.0,
+        x,
+        y
+    )
+    return Color(
+        clamp_byte(red * 255.0 / alpha),
+        clamp_byte(green * 255.0 / alpha),
+        clamp_byte(blue * 255.0 / alpha),
+        clamp_byte(alpha)
+    )
+}
+
+func bilinear_value(
+    top_left:float,
+    top_right:float,
+    bottom_left:float,
+    bottom_right:float,
+    x:float,
+    y:float
+) float {
+    let top = top_left + (top_right - top_left) * x
+    let bottom = bottom_left + (bottom_right - bottom_left) * x
+    return top + (bottom - top) * y
+}
+
+func color_or_background(
+    pixels:uint8[],
+    width:int,
+    height:int,
+    x:int,
+    y:int,
+    background:Color
+) Color {
+    if x < 0 || x >= width || y < 0 || y >= height { return background }
+    return color_at(pixels, width, x, y)
+}
+
+func color_clamped(pixels:uint8[], width:int, height:int, x:int, y:int) Color {
+    var sample_x = x
+    var sample_y = y
+    if sample_x < 0 { sample_x = 0 }
+    if sample_x >= width { sample_x = width - 1 }
+    if sample_y < 0 { sample_y = 0 }
+    if sample_y >= height { sample_y = height - 1 }
+    return color_at(pixels, width, sample_x, sample_y)
+}
+
+func color_at(pixels:uint8[], width:int, x:int, y:int) Color {
+    let index = (y * width + x) * 4
+    return Color(pixels[index], pixels[index + 1], pixels[index + 2], pixels[index + 3])
+}
+
+func append_color(pixels:&uint8[], color:Color) {
+    pixels.append(color.r)
+    pixels.append(color.g)
+    pixels.append(color.b)
+    pixels.append(color.a)
+}
+
+func sharpen_channel(
+    center:uint8,
+    left:uint8,
+    right:uint8,
+    top:uint8,
+    bottom:uint8,
+    amount:float
+) uint8 {
+    let value = center as float * (1.0 + 4.0 * amount) -
+        (left as float + right as float + top as float + bottom as float) * amount
+    return clamp_byte(value)
+}
+
+func clamp_byte(value:float) uint8 {
+    if value <= 0.0 { return 0 }
+    if value >= 255.0 { return 255 }
+    return Math.round(value) as uint8
+}
+
+func require_dimensions(width:int, height:int, byte_count:int) {
+    require_pixel_count(width, height)
+    if byte_count != width * height * 4 {
+        panic("Image RGBA8 data requires four channels per pixel")
+    }
+}
+
+func require_pixel_count(width:int, height:int) {
+    if width <= 0 || height <= 0 || width > 100 * 1024 * 1024 / height {
+        panic("Image dimensions must be positive and stay within the pixel limit")
+    }
+}
+
+func is_png(bytes:uint8[]) bool {
+    return bytes.count() >= 8 &&
+        bytes[0] == 137 as uint8 &&
+        bytes[1] == 80 as uint8 &&
+        bytes[2] == 78 as uint8 &&
+        bytes[3] == 71 as uint8 &&
+        bytes[4] == 13 as uint8 &&
+        bytes[5] == 10 as uint8 &&
+        bytes[6] == 26 as uint8 &&
+        bytes[7] == 10 as uint8
+}
+
+func image_error(kind:ErrorKind, operation:str, subject:str?, detail:str) Error {
+    return Error(kind:kind, operation:operation, subject:subject, detail:detail)
+}

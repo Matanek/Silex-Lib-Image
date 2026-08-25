@@ -1,0 +1,15 @@
+use Image
+use Image.PNG
+
+func main() {
+    var source = Image.canvas(640, 360, Image.Color(236, 72, 153))
+    var thumbnail = copy source
+        ..crop(360, 360)
+        ..resize(256, 256)
+        ..grayscale()
+        ..contrast(1.15)
+        ..sharpen(0.4)
+
+    Image.save(thumbnail, "/private/tmp/silex-image-cascade.png", PNG.Options())
+    print("saved /private/tmp/silex-image-cascade.png")
+}

@@ -1,0 +1,17 @@
+use Image
+use Image.PNG
+
+test "consume image editing and PNG across the public package boundary" {
+    var original = Image.canvas(6, 4, Image.Color(220, 80, 40))
+    var thumbnail = copy original
+        ..crop(4, 4)
+        ..resize(2, 2, Image.ResizeOptions(filter:Image.Resampling.nearest))
+        ..grayscale()
+        ..contrast(1.1)
+
+    let bytes = Image.encode(thumbnail, PNG.Options())
+    var decoded = Image.decode(bytes)
+    assert(decoded.width() == 2 && decoded.height() == 2)
+    assert(decoded.pixel(0, 0).r == decoded.pixel(0, 0).g)
+    assert(original.width() == 6 && original.height() == 4)
+}

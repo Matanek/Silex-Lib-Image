@@ -1,0 +1,165 @@
+use Interop.Boundary
+use Interop.C
+
+public struct Options {
+    init() {}
+}
+
+package struct Decoded {
+    let width:int
+    let height:int
+    let pixels:uint8[]
+}
+
+package func decode(bytes:uint8[], maximum_pixels:int) Result<Decoded, str> {
+    if bytes.count() == 0 { return Result<Decoded, str>.failure("PNG image is empty") }
+    let packed = C.string(@bytes[0:bytes.count()])
+    let stream = C.address_bits(sdl_io_from_const_memory(
+        C.pointer(packed),
+        C.byte_count(packed)
+    ))
+    if stream == 0 as uint {
+        return Result<Decoded, str>.failure("SDL could not open the PNG bytes")
+    }
+    let decoded = C.address_bits(sdl_load_png_io(C.pointer_bits(stream), 1))
+    if decoded == 0 as uint {
+        return Result<Decoded, str>.failure("SDL could not decode the PNG image")
+    }
+    let converted = C.address_bits(sdl_convert_surface(
+        C.pointer_bits(decoded),
+        0x1676_2004 as uint32
+    ))
+    sdl_destroy_surface(C.pointer_bits(decoded))
+    if converted == 0 as uint {
+        return Result<Decoded, str>.failure("SDL could not convert the PNG image to RGBA8")
+    }
+    let width = C.load<int32>(converted, 8 as uint) as int
+    let height = C.load<int32>(converted, 12 as uint) as int
+    if width <= 0 || height <= 0 || width > maximum_pixels / height {
+        sdl_destroy_surface(C.pointer_bits(converted))
+        return Result<Decoded, str>.failure("PNG dimensions exceed the configured pixel limit")
+    }
+    if sdl_lock_surface(C.pointer_bits(converted)) == 0 {
+        sdl_destroy_surface(C.pointer_bits(converted))
+        return Result<Decoded, str>.failure("SDL could not access the decoded PNG pixels")
+    }
+    let pitch = C.load<int32>(converted, 16 as uint) as int
+    let source = C.load<uint>(converted, 24 as uint)
+    var pixels:uint8[] = []
+    var y = 0
+    while y < height {
+        var x = 0
+        while x < width * 4 {
+            pixels.append(C.load<uint8>(source, (y * pitch + x) as uint))
+            x++
+        }
+        y++
+    }
+    sdl_unlock_surface(C.pointer_bits(converted))
+    sdl_destroy_surface(C.pointer_bits(converted))
+    return Result<Decoded, str>.success(Decoded(width:width, height:height, pixels:pixels))
+}
+
+package func encode(width:int, height:int, pixels:uint8[]) Result<uint8[], str> {
+    let packed = C.string(@pixels[0:pixels.count()])
+    let surface = C.address_bits(sdl_create_surface_from(
+        width as int32,
+        height as int32,
+        0x1676_2004 as uint32,
+        C.pointer(packed),
+        (width * 4) as int32
+    ))
+    if surface == 0 as uint {
+        return Result<uint8[], str>.failure("SDL could not create an RGBA8 surface for PNG export")
+    }
+    let stream = C.address_bits(sdl_io_from_dynamic_memory())
+    if stream == 0 as uint {
+        sdl_destroy_surface(C.pointer_bits(surface))
+        return Result<uint8[], str>.failure("SDL could not create the PNG output stream")
+    }
+    let saved = sdl_save_png_io(C.pointer_bits(surface), C.pointer_bits(stream), 0)
+    sdl_destroy_surface(C.pointer_bits(surface))
+    if saved == 0 {
+        sdl_close_io(C.pointer_bits(stream))
+        return Result<uint8[], str>.failure("SDL could not encode the image as PNG")
+    }
+    let size = sdl_get_io_size(C.pointer_bits(stream))
+    if size <= 0 || size > 128 * 1024 * 1024 {
+        sdl_close_io(C.pointer_bits(stream))
+        return Result<uint8[], str>.failure("SDL produced an invalid PNG byte count")
+    }
+    if sdl_seek_io(C.pointer_bits(stream), 0, 0) < 0 {
+        sdl_close_io(C.pointer_bits(stream))
+        return Result<uint8[], str>.failure("SDL could not rewind the PNG output stream")
+    }
+    var storage = byte_storage(size as int)
+    let read = sdl_read_io(
+        C.pointer_bits(stream),
+        C.mutable_string_pointer(storage),
+        size as C.Size
+    )
+    sdl_close_io(C.pointer_bits(stream))
+    if read != size as C.Size {
+        return Result<uint8[], str>.failure("SDL could not read the encoded PNG bytes")
+    }
+    var result:uint8[] = []
+    var index = 0
+    while index < size as int {
+        result.append(C.byte_at(storage, index as uint))
+        index++
+    }
+    return Result<uint8[], str>.success(result)
+}
+
+func byte_storage(minimum:int) str {
+    var bytes = "\0"
+    while C.byte_count(bytes) < minimum as uint { bytes = bytes + bytes }
+    return bytes
+}
+
+let sdl_io_from_const_memory = C.function<
+    func(C.Pointer<uint8>, C.Size) C.Pointer<uint8>
+>(library:Boundary.SDL3, name:"SDL_IOFromConstMem")
+let sdl_load_png_io = C.function<
+    func(C.Pointer<uint8>, int32) C.Pointer<uint8>
+>(library:Boundary.SDL3, name:"SDL_LoadPNG_IO")
+let sdl_convert_surface = C.function<
+    func(C.Pointer<uint8>, uint32) C.Pointer<uint8>
+>(library:Boundary.SDL3, name:"SDL_ConvertSurface")
+let sdl_lock_surface = C.function<func(C.Pointer<uint8>) int32>(
+    library:Boundary.SDL3,
+    name:"SDL_LockSurface"
+)
+let sdl_unlock_surface = C.function<func(C.Pointer<uint8>) void>(
+    library:Boundary.SDL3,
+    name:"SDL_UnlockSurface"
+)
+let sdl_destroy_surface = C.function<func(C.Pointer<uint8>) void>(
+    library:Boundary.SDL3,
+    name:"SDL_DestroySurface"
+)
+let sdl_create_surface_from = C.function<
+    func(int32, int32, uint32, C.Pointer<uint8>, int32) C.Pointer<uint8>
+>(library:Boundary.SDL3, name:"SDL_CreateSurfaceFrom")
+let sdl_io_from_dynamic_memory = C.function<func() C.Pointer<uint8> >(
+    library:Boundary.SDL3,
+    name:"SDL_IOFromDynamicMem"
+)
+let sdl_save_png_io = C.function<
+    func(C.Pointer<uint8>, C.Pointer<uint8>, int32) int32
+>(library:Boundary.SDL3, name:"SDL_SavePNG_IO")
+let sdl_get_io_size = C.function<func(C.Pointer<uint8>) C.SignedSize>(
+    library:Boundary.SDL3,
+    name:"SDL_GetIOSize"
+)
+let sdl_seek_io = C.function<func(C.Pointer<uint8>, C.SignedSize, int32) C.SignedSize>(
+    library:Boundary.SDL3,
+    name:"SDL_SeekIO"
+)
+let sdl_read_io = C.function<
+    func(C.Pointer<uint8>, C.Pointer<uint8>, C.Size) C.Size
+>(library:Boundary.SDL3, name:"SDL_ReadIO")
+let sdl_close_io = C.function<func(C.Pointer<uint8>) int32>(
+    library:Boundary.SDL3,
+    name:"SDL_CloseIO"
+)

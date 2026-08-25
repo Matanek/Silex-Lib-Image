@@ -1,0 +1,116 @@
+use Image
+use Image.PNG
+
+func sample_image() Image {
+    return Image.rgba8(2, 2, [
+        255, 0, 0, 255,
+        0, 255, 0, 255,
+        0, 0, 255, 255,
+        255, 255, 255, 255
+    ])
+}
+
+test "mutate one owned image through a Silex cascade" {
+    var styled = sample_image()
+        ..flip_horizontal()
+        ..grayscale()
+        ..contrast(1.15)
+        ..sharpen(0.25)
+
+    assert(styled.width() == 2)
+    assert(styled.height() == 2)
+    let pixel = styled.pixel(0, 0)
+    assert(pixel.r == pixel.g && pixel.g == pixel.b)
+}
+
+test "detach an image explicitly before a mutating cascade" {
+    var original = sample_image()
+    var edited = copy original
+        ..invert()
+        ..flip_vertical()
+
+    assert(original.pixel(0, 0).r == 255 as uint8)
+    assert(edited.pixel(0, 1).r == 0 as uint8)
+}
+
+test "crop by region and by anchored padded dimensions" {
+    var exact = sample_image()..crop(Image.Region(x:1, y:0, width:1, height:2))
+    assert(exact.width() == 1 && exact.height() == 2)
+    assert(exact.pixel(0, 0).g == 255 as uint8)
+
+    var padded = sample_image()..crop(4, 4, Image.CropOptions(
+        anchor:Image.Anchor.center,
+        overflow:Image.CropOverflow.pad,
+        background:Image.Color.transparent()
+    ))
+    assert(padded.width() == 4 && padded.height() == 4)
+    assert(padded.pixel(0, 0).a == 0 as uint8)
+    assert(padded.pixel(1, 1).r == 255 as uint8)
+}
+
+test "resize with stretch contain and cover intentions" {
+    var stretched = sample_image()..resize(4, 2, Image.ResizeOptions(
+        filter:Image.Resampling.nearest
+    ))
+    assert(stretched.width() == 4 && stretched.height() == 2)
+
+    var contained = sample_image()..resize(8, 4, Image.ResizeOptions(
+        mode:Image.ResizeMode.contain,
+        filter:Image.Resampling.nearest
+    ))
+    assert(contained.width() == 4 && contained.height() == 4)
+
+    var covered = sample_image()..resize(8, 4, Image.ResizeOptions(
+        mode:Image.ResizeMode.cover,
+        filter:Image.Resampling.nearest
+    ))
+    assert(covered.width() == 8 && covered.height() == 4)
+}
+
+test "rotate and flip while preserving RGBA pixels" {
+    var rotated = sample_image()..rotate_right()
+    assert(rotated.width() == 2 && rotated.height() == 2)
+    assert(rotated.pixel(1, 0).r == 255 as uint8)
+
+    var flipped = sample_image()..flip_vertical()
+    assert(flipped.pixel(0, 0).b == 255 as uint8)
+
+    var portrait = Image.canvas(2, 3, Image.Color.white())..rotate_right()
+    assert(portrait.width() == 3 && portrait.height() == 2)
+}
+
+test "resample translucent colors without dark halos" {
+    var rotated = Image.canvas(3, 3)
+    rotated.set_pixel(1, 1, Image.Color(255, 0, 0))
+    rotated.rotate(45.0)
+    var found_edge = false
+    for y in 0...rotated.height() {
+        for x in 0...rotated.width() {
+            let pixel = rotated.pixel(x, y)
+            if pixel.a > 0 as uint8 && pixel.a < 255 as uint8 {
+                assert(pixel.r >= 254 as uint8)
+                found_edge = true
+            }
+        }
+    }
+    assert(found_edge)
+
+    var blurred = Image.canvas(3, 3)
+    blurred.set_pixel(1, 1, Image.Color(255, 0, 0))
+    blurred.blur()
+    assert(blurred.pixel(0, 0).r == 255 as uint8)
+    assert(blurred.pixel(0, 0).a > 0 as uint8)
+}
+
+test "encode save load and decode PNG through the Image API" {
+    let path = "/private/tmp/silex-image-roundtrip.png"
+    var original = sample_image()..resize(5, 3)
+    let bytes = Image.encode(original, PNG.Options())
+    var decoded = Image.decode(bytes)
+    assert(decoded.width() == 5 && decoded.height() == 3)
+
+    Image.save(decoded, path)
+    var loaded = Image.load(path)
+    assert(loaded.width() == 5 && loaded.height() == 3)
+    assert(loaded.pixel(0, 0).a == 255 as uint8)
+}

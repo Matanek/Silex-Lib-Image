@@ -1,0 +1,35 @@
+{
+  "name": "Image",
+  "version": "0.1.0",
+  "description": "Load, save, and transform raster images with native Silex cascades.",
+  "authors": ["Matanek"],
+  "requires": {
+    "silex": ">=0.41.0"
+  },
+  "dependencies": {
+    "GFX": "^0.37.0",
+    "STD": "^0.16.5"
+  },
+  "boundary": {
+    "macos-arm64": {
+      "providers": {
+        "SDL3": { "requires": ["GFX.SDL3"] }
+      }
+    },
+    "linux-x64": {
+      "providers": {
+        "SDL3": { "requires": ["GFX.SDL3"] }
+      }
+    },
+    "windows-x64": {
+      "providers": {
+        "SDL3": { "requires": ["GFX.SDL3"] }
+      }
+    },
+    "windows-arm64": {
+      "providers": {
+        "SDL3": { "requires": ["GFX.SDL3"] }
+      }
+    }
+  }
+}
