@@ -38,5 +38,5 @@ Image.save(thumbnail, "avatar.webp", WebP.Options(lossless:true))
 unchanged. A cascade starting from `Image.load(...)` edits the newly owned
 temporary directly.
 
-See [Docs/README.md](Docs/README.md) for the complete initial contract and
-[Examples/Cascade.sx](Examples/Cascade.sx) for an executable pipeline.
+See [Docs/README.md](Docs/README.md) for the complete initial contract and its
+full editing pipeline.
