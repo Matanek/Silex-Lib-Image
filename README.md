@@ -1,42 +1,15 @@
-# Image
+# Image for Silex
 
-Image loads, saves, and edits raster images through one intention-oriented
-Silex API. The first release provides RGBA8 images with PNG, JPEG, and WebP
-input and output, plus cropping, resizing, rotation, mirroring, grayscale
-conversion, brightness, contrast, blur, and sharpening.
+`Image` loads, saves, and transforms raster images through one
+intention-oriented API with built-in PNG, JPEG, and WebP support.
 
 ```text
 silex install Image
 ```
 
-`Image` is a mutable class. Assigning it shares the same image identity;
-`copy image` creates an explicit detached image. Its operations mutate their
-receiver deliberately so several edits compose
-through the Silex cascade operator without creating an API-level copy between
-every step:
+## Documentation
 
-```sx
-use Image
-use Image.JPEG
-use Image.PNG
-use Image.WebP
+- [Documentation française](Docs/FR/README.md)
+- [English documentation](Docs/EN/README.md)
 
-var source = Image.load("portrait.png")
-var thumbnail = copy source
-    ..crop(800, 800)
-    ..resize(256, 256)
-    ..grayscale()
-    ..contrast(1.15)
-    ..sharpen(0.4)
-
-Image.save(thumbnail, "avatar.png", PNG.Options())
-Image.save(thumbnail, "avatar.jpg", JPEG.Options(quality:90))
-Image.save(thumbnail, "avatar.webp", WebP.Options(lossless:true))
-```
-
-`copy source` is the explicit Silex spelling when the original must remain
-unchanged. A cascade starting from `Image.load(...)` edits the newly owned
-temporary directly.
-
-See [Docs/README.md](Docs/README.md) for the complete initial contract and its
-full editing pipeline.
+The package requires Silex 0.41.0 or newer.
