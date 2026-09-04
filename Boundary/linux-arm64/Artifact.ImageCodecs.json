@@ -1,0 +1,16 @@
+{
+  "abi": "silex-image-codecs-1",
+  "target": "linux-arm64",
+  "linkage": "static",
+  "artifacts": {
+    "ImageCodecs": "af037bd1d35a2c595d5bf633b10b7f44678131cf0bf03c323385d668b076ee91",
+    "TurboJPEG": "557e2866e92a458a655dd1c40914f566f1cdadb8e7a2d2f2b508b491b3e8e95f",
+    "NativeWebP": "08a0a5eac542af2d52d764d5d793e62f2a4eada0cae728812765efe944bb5c3c",
+    "SharpYUV": "29010665798da9b0c649884101bf91b2a2f7322a465b8bbc7f5a54387a33172d"
+  },
+  "upstream": {
+    "libjpeg-turbo": "3.2.0",
+    "libwebp": "1.6.0"
+  },
+  "system_dependencies": ["m"]
+}

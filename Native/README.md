@@ -27,4 +27,9 @@ enabled on x64 and Windows ARM64, while the macOS ARM64 build uses the portable
 path. The Silex boundary exposes only Image-owned result handles and never
 publishes either upstream C API.
 
+The missing macOS X64 and Linux ARM64 archive sets were reproduced byte for
+byte by GitHub Actions run `33907810659`. `Boundary/SHA256SUMS.txt` records all
+six target sets and every target directory carries its machine-readable
+artifact manifest.
+
 Licenses and required notices are preserved under `Licenses/`.

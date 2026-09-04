@@ -1,0 +1,16 @@
+{
+  "abi": "silex-image-codecs-1",
+  "target": "macos-arm64",
+  "linkage": "static",
+  "artifacts": {
+    "ImageCodecs": "8defaa3fe40496ab5c264e215ef2ec305df0e9068bb6083b3a231ff74ddcd50b",
+    "TurboJPEG": "87b6def328764254f453889f584a2cf03c4135dd002096493bb4dc95e40ae918",
+    "NativeWebP": "f7de003aac4923759eecc487f80afc2e84bb18ebaa30c1ee94b279a28b8a32f7",
+    "SharpYUV": "8d79d5ae131a5e6f210695077ead1d568800cea01edf3e171101b96d8e773a3d"
+  },
+  "upstream": {
+    "libjpeg-turbo": "3.2.0",
+    "libwebp": "1.6.0"
+  },
+  "system_dependencies": []
+}

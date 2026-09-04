@@ -33,6 +33,25 @@
         }
       }
     },
+    "macos-x64": {
+      "providers": {
+        "SDL3": { "requires": ["GFX.SDL3"] },
+        "ImageCodecs": {
+          "archive": "Boundary/macos-x64/libImageCodecs.a",
+          "requires": ["Image.TurboJPEG", "Image.NativeWebP"]
+        },
+        "TurboJPEG": {
+          "archive": "Boundary/macos-x64/libturbojpeg.a"
+        },
+        "NativeWebP": {
+          "archive": "Boundary/macos-x64/libwebp.a",
+          "requires": ["Image.SharpYUV"]
+        },
+        "SharpYUV": {
+          "archive": "Boundary/macos-x64/libsharpyuv.a"
+        }
+      }
+    },
     "linux-x64": {
       "providers": {
         "SDL3": { "requires": ["GFX.SDL3"] },
@@ -50,6 +69,26 @@
         },
         "SharpYUV": {
           "archive": "Boundary/linux-x64/libsharpyuv.a"
+        }
+      }
+    },
+    "linux-arm64": {
+      "providers": {
+        "SDL3": { "requires": ["GFX.SDL3"] },
+        "ImageCodecs": {
+          "archive": "Boundary/linux-arm64/libImageCodecs.a",
+          "requires": ["Image.TurboJPEG", "Image.NativeWebP"],
+          "libraries": ["m"]
+        },
+        "TurboJPEG": {
+          "archive": "Boundary/linux-arm64/libturbojpeg.a"
+        },
+        "NativeWebP": {
+          "archive": "Boundary/linux-arm64/libwebp.a",
+          "requires": ["Image.SharpYUV"]
+        },
+        "SharpYUV": {
+          "archive": "Boundary/linux-arm64/libsharpyuv.a"
         }
       }
     },

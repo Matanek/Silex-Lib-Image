@@ -9,6 +9,7 @@ on:
       - spec-desktop-platform-portability-07
     paths:
       - .github/workflows/build-portability.yml
+      - Boundary/SHA256SUMS.txt
       - Native/**
 
 permissions:
@@ -77,6 +78,14 @@ jobs:
             cmp "$RUNNER_TEMP/output-a/$archive" "$RUNNER_TEMP/output-b/$archive"
             shasum -a 256 "$RUNNER_TEMP/output-a/$archive"
           done
+          while read -r expected relative; do
+            case "$relative" in
+              "${{ matrix.target }}"/*)
+                archive="${relative#*/}"
+                echo "$expected  $RUNNER_TEMP/output-a/$archive" | shasum -a 256 -c -
+                ;;
+            esac
+          done < Image/Boundary/SHA256SUMS.txt
 
       - name: Preserve candidate archives
         uses: actions/upload-artifact@v4
