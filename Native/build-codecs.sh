@@ -114,7 +114,7 @@ build_target() {
         -ffile-prefix-map="$image_build_root"=/silex-build \
         -ffile-prefix-map="$image_package_dir"=/sources/image \
         -I"$image_jpeg_source/src" \
-        -I"$image_webp_source" \
+        -I"$image_webp_source/src" \
         -c "$image_native_dir/ImageCodecs.c" \
         -o "$image_build_root/ImageCodecs-$image_name.o"
     rm -f "$image_destination/${image_prefix}ImageCodecs.$image_extension"
