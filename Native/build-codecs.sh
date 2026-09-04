@@ -141,7 +141,7 @@ case "$image_requested_target" in
             echo "macos-x64 must be built on macOS" >&2
             exit 1
         }
-        build_target macos-x64 Darwin x86_64 cc OFF a lib
+        build_target macos-x64 Darwin x86_64 cc ON a lib
         ;;
     linux-arm64)
         build_target linux-arm64 Linux aarch64 "$image_native_dir/Toolchains/zig-cc-linux-arm64" OFF a lib
