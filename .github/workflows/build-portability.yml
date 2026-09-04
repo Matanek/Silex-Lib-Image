@@ -1,0 +1,87 @@
+name: Build missing Image desktop archives
+
+run-name: Build missing Image desktop archives
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - spec-desktop-platform-portability-07
+    paths:
+      - .github/workflows/build-portability.yml
+      - Native/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-build-portability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [macos-x64, linux-arm64]
+
+    name: ${{ matrix.target }}
+    runs-on: macos-15
+    timeout-minutes: 50
+
+    steps:
+      - name: Check out Image
+        uses: actions/checkout@v6
+        with:
+          path: Image
+
+      - name: Install Zig 0.16.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/zig.tar.xz"
+          curl -fL https://ziglang.org/download/0.16.0/zig-aarch64-macos-0.16.0.tar.xz -o "$archive"
+          echo "b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489  $archive" | shasum -a 256 -c -
+          tar -xJf "$archive" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/zig-aarch64-macos-0.16.0" >> "$GITHUB_PATH"
+
+      - name: Download and verify upstream sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sources"
+          curl -fL https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz -o "$RUNNER_TEMP/libjpeg-turbo.tar.gz"
+          curl -fL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz -o "$RUNNER_TEMP/libwebp.tar.gz"
+          echo "6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e  $RUNNER_TEMP/libjpeg-turbo.tar.gz" | shasum -a 256 -c -
+          echo "e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564  $RUNNER_TEMP/libwebp.tar.gz" | shasum -a 256 -c -
+          tar -xzf "$RUNNER_TEMP/libjpeg-turbo.tar.gz" -C "$RUNNER_TEMP/sources"
+          tar -xzf "$RUNNER_TEMP/libwebp.tar.gz" -C "$RUNNER_TEMP/sources"
+
+      - name: Build twice and compare
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMPDIR="$RUNNER_TEMP/rebuild-a" Image/Native/build-codecs.sh \
+            "$RUNNER_TEMP/sources/libjpeg-turbo-3.2.0" \
+            "$RUNNER_TEMP/sources/libwebp-1.6.0" \
+            "${{ matrix.target }}"
+          mkdir -p "$RUNNER_TEMP/output-a"
+          cp Image/Boundary/${{ matrix.target }}/* "$RUNNER_TEMP/output-a/"
+          TMPDIR="$RUNNER_TEMP/rebuild-b" Image/Native/build-codecs.sh \
+            "$RUNNER_TEMP/sources/libjpeg-turbo-3.2.0" \
+            "$RUNNER_TEMP/sources/libwebp-1.6.0" \
+            "${{ matrix.target }}"
+          mkdir -p "$RUNNER_TEMP/output-b"
+          cp Image/Boundary/${{ matrix.target }}/* "$RUNNER_TEMP/output-b/"
+          for archive in libImageCodecs.a libturbojpeg.a libwebp.a libsharpyuv.a; do
+            cmp "$RUNNER_TEMP/output-a/$archive" "$RUNNER_TEMP/output-b/$archive"
+            shasum -a 256 "$RUNNER_TEMP/output-a/$archive"
+          done
+
+      - name: Preserve candidate archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.target }}
+          path: ${{ runner.temp }}/output-a/*
+          retention-days: 7
+          if-no-files-found: error

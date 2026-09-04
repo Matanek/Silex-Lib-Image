@@ -14,9 +14,14 @@ checksums and extracting both archives, rebuild every package archive with:
 
 ```text
 Native/build-codecs.sh /path/to/libjpeg-turbo-3.2.0 /path/to/libwebp-1.6.0
+Native/build-codecs.sh /path/to/libjpeg-turbo-3.2.0 /path/to/libwebp-1.6.0 macos-x64
+Native/build-codecs.sh /path/to/libjpeg-turbo-3.2.0 /path/to/libwebp-1.6.0 linux-arm64
 ```
 
-The build disables libjpeg-turbo SIMD and command-line tools. WebP uses its
+With no third argument the script reproduces the four established archives;
+the explicit target forms build either additional desktop archive set. The
+build fixes archive timestamps and remaps build paths. It disables
+libjpeg-turbo SIMD and command-line tools. WebP uses its
 portable static libraries, without threads or command-line tools; SIMD remains
 enabled on x64 and Windows ARM64, while the macOS ARM64 build uses the portable
 path. The Silex boundary exposes only Image-owned result handles and never
