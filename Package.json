@@ -1,17 +1,17 @@
 {
   "name": "Image",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": {
     "en": "Load, save, and transform raster images with native Silex cascades.",
     "fr": "Charge, enregistre et transforme des images matricielles avec des cascades Silex natives."
   },
   "authors": ["Matanek"],
   "requires": {
-    "silex": ">=0.43.0"
+    "silex": ">=0.44.0"
   },
   "dependencies": {
-    "GFX": "^0.37.0",
-    "STD": "^0.16.5"
+    "GFX": "^0.40.0",
+    "STD": "^0.22.0"
   },
   "boundary": {
     "macos-arm64": {
