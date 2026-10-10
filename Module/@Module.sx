@@ -516,7 +516,7 @@ public class Image {
     }
 }
 
-public func try_load(path:str, options:ReadOptions = ReadOptions()) Result<Image, Error> {
+public func load(path:str, options:ReadOptions = ReadOptions()) Result<Image, Error> {
     if path == "" {
         return Result<Image, Error>.failure(image_error(
             ErrorKind.invalid_input,
@@ -525,7 +525,7 @@ public func try_load(path:str, options:ReadOptions = ReadOptions()) Result<Image
             "path cannot be empty"
         ))
     }
-    match File.read_all(path, options.maximum_bytes) {
+    match (try File.read_all(path, options.maximum_bytes)) {
         failure(error) => {
             return Result<Image, Error>.failure(image_error(
                 ErrorKind.io,
@@ -534,18 +534,12 @@ public func try_load(path:str, options:ReadOptions = ReadOptions()) Result<Image
                 error.detail
             ))
         }
-        success(bytes) => { return try_decode(bytes, options) }
+        success(bytes) => { return (try decode(bytes, options)) }
     }
 }
 
-public func load(path:str, options:ReadOptions = ReadOptions()) Image {
-    match try_load(path, options) {
-        failure(error) => { panic(error.operation + ": " + error.detail) }
-        success(image) => { return image }
-    }
-}
 
-public func try_decode(bytes:uint8[], options:ReadOptions = ReadOptions()) Result<Image, Error> {
+public func decode(bytes:uint8[], options:ReadOptions = ReadOptions()) Result<Image, Error> {
     if bytes.count() == 0 {
         return Result<Image, Error>.failure(image_error(
             ErrorKind.invalid_input,
@@ -563,7 +557,7 @@ public func try_decode(bytes:uint8[], options:ReadOptions = ReadOptions()) Resul
         ))
     }
     if is_png(bytes) {
-        match PNG.decode(bytes, options.maximum_pixels) {
+        match (try PNG.decode(bytes, options.maximum_pixels)) {
             failure(detail) => {
                 return Result<Image, Error>.failure(image_error(
                     ErrorKind.codec,
@@ -582,7 +576,7 @@ public func try_decode(bytes:uint8[], options:ReadOptions = ReadOptions()) Resul
         }
     }
     if is_jpeg(bytes) {
-        match JPEG.decode(bytes, options.maximum_pixels) {
+        match (try JPEG.decode(bytes, options.maximum_pixels)) {
             failure(detail) => {
                 return Result<Image, Error>.failure(image_error(
                     ErrorKind.codec,
@@ -601,7 +595,7 @@ public func try_decode(bytes:uint8[], options:ReadOptions = ReadOptions()) Resul
         }
     }
     if is_webp(bytes) {
-        match WebP.decode(bytes, options.maximum_pixels) {
+        match (try WebP.decode(bytes, options.maximum_pixels)) {
             failure(detail) => {
                 return Result<Image, Error>.failure(image_error(
                     ErrorKind.codec,
@@ -627,15 +621,9 @@ public func try_decode(bytes:uint8[], options:ReadOptions = ReadOptions()) Resul
     ))
 }
 
-public func decode(bytes:uint8[], options:ReadOptions = ReadOptions()) Image {
-    match try_decode(bytes, options) {
-        failure(error) => { panic(error.operation + ": " + error.detail) }
-        success(image) => { return image }
-    }
-}
 
-public func try_encode(image:Image, options:PNG.Options) Result<uint8[], Error> {
-    match PNG.encode(image.width(), image.height(), image.pixels()) {
+public func encode(image:Image, options:PNG.Options) Result<uint8[], Error> {
+    match (try PNG.encode(image.width(), image.height(), image.pixels())) {
         failure(detail) => {
             return Result<uint8[], Error>.failure(image_error(
                 ErrorKind.codec,
@@ -648,15 +636,9 @@ public func try_encode(image:Image, options:PNG.Options) Result<uint8[], Error> 
     }
 }
 
-public func encode(image:Image, options:PNG.Options) uint8[] {
-    match try_encode(image, options) {
-        failure(error) => { panic(error.operation + ": " + error.detail) }
-        success(bytes) => { return bytes }
-    }
-}
 
-public func try_encode(image:Image, options:JPEG.Options) Result<uint8[], Error> {
-    match JPEG.encode(image.width(), image.height(), image.pixels(), options) {
+public func encode(image:Image, options:JPEG.Options) Result<uint8[], Error> {
+    match (try JPEG.encode(image.width(), image.height(), image.pixels(), options)) {
         failure(detail) => {
             return Result<uint8[], Error>.failure(image_error(
                 ErrorKind.codec,
@@ -669,15 +651,9 @@ public func try_encode(image:Image, options:JPEG.Options) Result<uint8[], Error>
     }
 }
 
-public func encode(image:Image, options:JPEG.Options) uint8[] {
-    match try_encode(image, options) {
-        failure(error) => { panic(error.operation + ": " + error.detail) }
-        success(bytes) => { return bytes }
-    }
-}
 
-public func try_encode(image:Image, options:WebP.Options) Result<uint8[], Error> {
-    match WebP.encode(image.width(), image.height(), image.pixels(), options) {
+public func encode(image:Image, options:WebP.Options) Result<uint8[], Error> {
+    match (try WebP.encode(image.width(), image.height(), image.pixels(), options)) {
         failure(detail) => {
             return Result<uint8[], Error>.failure(image_error(
                 ErrorKind.codec,
@@ -690,15 +666,9 @@ public func try_encode(image:Image, options:WebP.Options) Result<uint8[], Error>
     }
 }
 
-public func encode(image:Image, options:WebP.Options) uint8[] {
-    match try_encode(image, options) {
-        failure(error) => { panic(error.operation + ": " + error.detail) }
-        success(bytes) => { return bytes }
-    }
-}
 
-public func try_save(image:Image, path:str) Result<void, Error> {
-    match Path.extension(path) {
+public func save(image:Image, path:str) Result<void, Error> {
+    match (try Path.extension(path)) {
         failure(error) => {
             return Result<void, Error>.failure(image_error(
                 ErrorKind.invalid_input,
@@ -710,13 +680,13 @@ public func try_save(image:Image, path:str) Result<void, Error> {
         success(extension) => {
             if let value = extension {
                 if value == "png" || value == "PNG" {
-                    return try_save(image, path, PNG.Options())
+                    return (try save(image, path, PNG.Options()))
                 }
                 if value == "jpg" || value == "JPG" || value == "jpeg" || value == "JPEG" {
-                    return try_save(image, path, JPEG.Options())
+                    return (try save(image, path, JPEG.Options()))
                 }
                 if value == "webp" || value == "WEBP" {
-                    return try_save(image, path, WebP.Options())
+                    return (try save(image, path, WebP.Options()))
                 }
             }
         }
@@ -729,9 +699,9 @@ public func try_save(image:Image, path:str) Result<void, Error> {
     ))
 }
 
-public func try_save(image:Image, path:str, options:PNG.Options) Result<void, Error> {
-    let bytes = try try_encode(image, options)
-    match File.write_all(path, @bytes[0:bytes.count()]) {
+public func save(image:Image, path:str, options:PNG.Options) Result<void, Error> {
+    let bytes = try encode(image, options) else error { return Result<void,Error>.failure(error) }
+    match (try File.write_all(path, @bytes[0:bytes.count()])) {
         failure(error) => {
             return Result<void, Error>.failure(image_error(
                 ErrorKind.io,
@@ -744,9 +714,9 @@ public func try_save(image:Image, path:str, options:PNG.Options) Result<void, Er
     }
 }
 
-public func try_save(image:Image, path:str, options:JPEG.Options) Result<void, Error> {
-    let bytes = try try_encode(image, options)
-    match File.write_all(path, @bytes[0:bytes.count()]) {
+public func save(image:Image, path:str, options:JPEG.Options) Result<void, Error> {
+    let bytes = try encode(image, options) else error { return Result<void,Error>.failure(error) }
+    match (try File.write_all(path, @bytes[0:bytes.count()])) {
         failure(error) => {
             return Result<void, Error>.failure(image_error(
                 ErrorKind.io,
@@ -759,9 +729,9 @@ public func try_save(image:Image, path:str, options:JPEG.Options) Result<void, E
     }
 }
 
-public func try_save(image:Image, path:str, options:WebP.Options) Result<void, Error> {
-    let bytes = try try_encode(image, options)
-    match File.write_all(path, @bytes[0:bytes.count()]) {
+public func save(image:Image, path:str, options:WebP.Options) Result<void, Error> {
+    let bytes = try encode(image, options) else error { return Result<void,Error>.failure(error) }
+    match (try File.write_all(path, @bytes[0:bytes.count()])) {
         failure(error) => {
             return Result<void, Error>.failure(image_error(
                 ErrorKind.io,
@@ -774,33 +744,6 @@ public func try_save(image:Image, path:str, options:WebP.Options) Result<void, E
     }
 }
 
-public func save(image:Image, path:str) {
-    match try_save(image, path) {
-        failure(error) => { panic(error.operation + ": " + error.detail) }
-        success => {}
-    }
-}
-
-public func save(image:Image, path:str, options:PNG.Options) {
-    match try_save(image, path, options) {
-        failure(error) => { panic(error.operation + ": " + error.detail) }
-        success => {}
-    }
-}
-
-public func save(image:Image, path:str, options:JPEG.Options) {
-    match try_save(image, path, options) {
-        failure(error) => { panic(error.operation + ": " + error.detail) }
-        success => {}
-    }
-}
-
-public func save(image:Image, path:str, options:WebP.Options) {
-    match try_save(image, path, options) {
-        failure(error) => { panic(error.operation + ": " + error.detail) }
-        success => {}
-    }
-}
 
 struct Dimensions {
     let width:int

@@ -43,7 +43,7 @@ package func decode(bytes:uint8[], maximum_pixels:int) Result<Decoded, str> {
         C.byte_count(packed),
         maximum_pixels as C.Size
     ))
-    return decoded_result(result, "JPEG")
+    return (try decoded_result(result, "JPEG"))
 }
 
 package func encode(
@@ -66,7 +66,7 @@ package func encode(
         options.background.g as int32,
         options.background.b as int32
     ))
-    return encoded_result(result, "JPEG")
+    return (try encoded_result(result, "JPEG"))
 }
 
 func subsampling_value(subsampling:Subsampling) int32 {

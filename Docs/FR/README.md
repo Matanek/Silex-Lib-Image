@@ -13,7 +13,8 @@ rotation, miroir, niveaux de gris, luminosité, contraste, flou et netteté.
 silex install Image
 ```
 
-Image demande Silex 0.41.0 ou une version plus récente.
+Cette révision en développement requiert la toolchain avec capture
+`try` des opérations `Result` et extraction lors de l’appel ordinaire.
 
 ## Charger, encoder et enregistrer
 
@@ -35,8 +36,9 @@ Image.save(image, "output.png")
 ```
 
 Ce fragment suppose un fichier `input.png` à côté de la source. Les opérations
-`try_load`, `try_decode`, `try_encode` et `try_save` retournent des
-`Image.Error` structurées. `Image.ReadOptions` borne les octets encodés et les
+`load`, `decode`, `encode` et `save` ont une déclaration `Result` unique.
+L’appel ordinaire rend la valeur ou arrête le programme sur erreur ;
+`try Image.load(path)` conserve le résultat et son `Image.Error` structuré. `Image.ReadOptions` borne les octets encodés et les
 pixels décodés avant qu’une entrée non fiable consomme des ressources sans
 limite.
 

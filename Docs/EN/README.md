@@ -13,7 +13,8 @@ brightness, contrast, blur, and sharpening.
 silex install Image
 ```
 
-Image requires Silex 0.41.0 or newer.
+This development revision requires the toolchain with `try` capture for
+`Result` operations and extraction on ordinary calls.
 
 ## Load, encode, and save
 
@@ -34,9 +35,10 @@ let webp = Image.encode(image, WebP.Options(lossless:true))
 Image.save(image, "output.png")
 ```
 
-This fragment assumes an `input.png` file next to the source. The corresponding
-`try_load`, `try_decode`, `try_encode`, and `try_save` operations return
-structured `Image.Error` values. `Image.ReadOptions` bounds encoded bytes and
+This fragment assumes an `input.png` file next to the source. The `load`,
+`decode`, `encode`, and `save` operations each have one `Result` declaration.
+An ordinary call returns the value or stops the program on failure;
+`try Image.load(path)` keeps the result and its structured `Image.Error`. `Image.ReadOptions` bounds encoded bytes and
 decoded pixels before untrusted input can consume unlimited resources.
 
 PNG preserves RGBA8 pixels losslessly. JPEG cannot represent alpha;

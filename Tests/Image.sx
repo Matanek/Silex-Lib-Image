@@ -196,7 +196,7 @@ test "preserve hidden RGB channels in lossless WebP" {
 
 test "reject encoded bytes above the configured read limit" {
     let bytes = Image.encode(sample_image(), PNG.Options())
-    match Image.try_decode(bytes, Image.ReadOptions(maximum_bytes:8)) {
+    match (try Image.decode(bytes, Image.ReadOptions(maximum_bytes:8))) {
         failure(error) => { assert(error.kind == Image.ErrorKind.invalid_input) }
         success(image) => { assert(false) }
     }
